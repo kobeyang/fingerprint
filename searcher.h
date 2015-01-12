@@ -1,6 +1,7 @@
-#include <vector>
-#include <string>
 #include <bitset>
+#include <string>
+#include <map>
+#include <vector>
 #include "type.h"
 
 extern int hit_index[500];
@@ -10,31 +11,27 @@ extern double duration_not_find;
 
 class Searcher {
 private:
-	FILE* fp;
-	double diff;
-	int match;
-	std::vector<std::string> allFiles;
-	int _insert_one_item(unsigned int key, MusicInfo& m);
-	int _build_one_file_index(const std::string filepath);
-	int _inner_search(unsigned int queryID, unsigned long item, FingerItem* finger_block, int block_size, int i, int& temp_dif);
-	//void _do_statistics();
-	bool _comp(std::pair<unsigned int, MusicInfo>, std::pair<unsigned int, MusicInfo>);
-	long long _binary_search(unsigned int key);
-	int _loadFingerFromOneFile(std::string filepath_prefix, unsigned int fileNum);
-	int _outputFingerToOneFile(std::string filepath_prefix, unsigned int databaseSize, unsigned int fileNum);
+	std::vector<std::string> _allFiles;
+	int _InsertOneItem(unsigned int key, MusicInfo& m);
+	int _BuildOneFileIndex(const std::string filepath);
+	int _InnerSearch(unsigned long item, FingerItem* finger_block,
+		int block_size, int i, std::map<int, int>*);
+	int _LoadFingerFromOneFile(std::string filepath_prefix, unsigned int fileNum);
+	int _OutputFingerToOneFile(std::string filepath_prefix, unsigned int databaseSize, unsigned int fileNum);
+	long long _BinarySearch(unsigned int key);
+	double _CompareBitsets(int id, FingerItem* finger_block, int block_size,
+		int i_frame_in_block, int i_frame_in_file);
 
 public:
-	IndexType index;
-	std::vector<std::vector<std::bitset<32>>> finger_database;
 	Searcher(){};
-	int build_index(std::string dirPath);
-	//int search(FingerItem* finger_block, int size, int& temp_diff);
-	int SubSamplingSearch(unsigned int queryID, FingerItem* finger_block, int size, int& temp_diff);
-	int compare_bitsets(int id, FingerItem* finger_block, int block_size, int i_frame_in_block, int i_frame_in_file);
-	double get_mean_diff();
+	IndexType _index;
+	std::vector<std::vector<std::bitset<32>>> _finger_database;
+	int BuildIndex(std::string dirPath);
+	int Search(FingerItem* finger_block, int size, int& temp_diff);
 	int LoadIndex(std::string filepath);
 	int LoadFingerDatabase(std::string filepath);
 	int OutputIndexToFile(std::string filepath);
 	int OutputFingerToFile(std::string filepath);
 	int Clear();
+	void DoStatistics();
 };

@@ -9,14 +9,14 @@
 
 class Util {
 private:
-	static std::vector<std::string> allFiles;
-	static std::vector<std::vector<std::bitset<32>>> finger_database;
-	static int _loadFingerFromOneFile(std::string filepath_prefix, unsigned int fileNum);
-	static int _outputFingerToOneFile(std::string filepath_prefix, unsigned int fileNum);
+	static std::vector<std::string> _allFiles;
+	static std::vector<std::vector<std::bitset<32>>> _finger_database;
+	static int _LoadFingerFromOneFile(std::string filepath_prefix, unsigned int fileNum);
+	static int _OutputFingerToOneFile(std::string filepath_prefix, unsigned int fileNum);
 public:
-	static int load_one_file(std::string filepath, std::vector<unsigned int>& audio_fingers);
-	static std::vector<std::string> load_dir(std::string dirpath, std::string type);
-	static void load_dir_specific(std::vector<std::vector<std::string>>& allQueryFiles, std::string dirpath, std::string type);
+	static int LoadOneFile(std::string filepath, std::vector<unsigned int>& audio_fingers);
+	static std::vector<std::string> LoadDir(std::string dirpath, std::string type);
+	static void LoadDirSpecific(std::vector<std::vector<std::string>>& allQueryFiles, std::string dirpath, std::string type);
 	static int LoadIndex(std::string index_filepath, IndexType& index);
 	static int OutputIndex(std::string index_filepath, IndexType& index);
 	static int LoadFingerDatabase(std::string filepath_prefix);

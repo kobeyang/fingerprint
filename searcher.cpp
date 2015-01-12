@@ -13,27 +13,22 @@
 
 using namespace std;
 
-extern map<int, int> tmp_result[3600];
+int hit_number = 0;
 
-bool comp(pair<int, MusicInfo> a, pair<int, MusicInfo> b) {
+bool comp(pair<unsigned int, MusicInfo> a,
+	pair<unsigned int, MusicInfo> b) {
 	return a.first < b.first;
 }
 
-int Searcher::Clear() {
-	index.clear();
-	finger_database.clear();
-	return 0;
-}
-
-long long Searcher::_binary_search(unsigned int key) {
+long long Searcher::_BinarySearch(unsigned int key) {
 	long long start = 0;
-	long long end = index.size() - 1;
+	long long end = _index.size() - 1;
 	long long mid;
 	while (end >= start) {
 		mid = start + (end - start) / 2;
-		if (key < index[mid].first)	{
+		if (key < _index[mid].first)	{
 			end = mid - 1;
-		} else if (key > index[mid].first) {
+		} else if (key > _index[mid].first) {
 			start = mid + 1;
 		} else {
 			return mid;
@@ -42,37 +37,36 @@ long long Searcher::_binary_search(unsigned int key) {
 	return -1;
 }
 
-int Searcher::build_index(string dirPath) {
-	finger_database.clear();
-	finger_database.resize(DATABASE_SIZE);
+int Searcher::BuildIndex(string dirPath) {
+	_finger_database.clear();
+	_finger_database.resize(DATABASE_SIZE);
 	time_t sort_start, sort_end;
-	allFiles = Util::load_dir(FINGER_ROOTPATH, "txt");
-	for (int i = 0; i < (signed)allFiles.size(); i++) {
+	_allFiles = Util::LoadDir(FINGER_ROOTPATH, "txt");
+	for (int i = 0; i < (signed)_allFiles.size(); i++) {
 		if (i % 1000 == 0)
 			cout << "Index: " << i << endl;
-		_build_one_file_index(allFiles[i]);
+		_BuildOneFileIndex(_allFiles[i]);
 	}
 
 	//cout<<"index size: "<<index.size()<<endl;
 	sort_start = clock();
-	sort(index.begin(), index.end(), comp);
+	sort(_index.begin(), _index.end(), comp);
 	sort_end = clock();
 	double sort_time = (double)(sort_end - sort_start) / CLOCKS_PER_SEC;
 	cout << "Sort time: " << sort_time << endl;
-	//_do_statistics();
 	return 0;
 }
 
-int Searcher::_insert_one_item(unsigned int key, MusicInfo& m) {
+int Searcher::_InsertOneItem(unsigned int key, MusicInfo& m) {
 	if (key == 0)
 		return 0;
-	index.push_back(make_pair(key, m));
+	_index.push_back(make_pair(key, m));
 	return 0;
 }
 
-int Searcher::_build_one_file_index(const string filepath) {
+int Searcher::_BuildOneFileIndex(const string filepath) {
 	vector<unsigned int> audio_file;
-	Util::load_one_file(filepath, audio_file);
+	Util::LoadOneFile(filepath, audio_file);
 	string originFile = filepath.substr(filepath.find_last_of("\\") + 1, filepath.find_last_of("."));
 	int finger_id = stoi(originFile);
 #ifdef SUB_SAMPLING
@@ -82,7 +76,7 @@ int Searcher::_build_one_file_index(const string filepath) {
 		if (i % M == 0)
 			fingers_block.push_back(temp_v[i]);
 	}
-	finger_database[finger_id] = fingers_block;
+	_finger_database[finger_id] = fingers_block;
 #else
 	finger_database[finger_id] = Util::VectorIntToVectorBitset(audio_file);
 #endif
@@ -94,7 +88,7 @@ int Searcher::_build_one_file_index(const string filepath) {
 	for (i = 0; i < (signed)audio_file.size(); i++)	{
 		if (i % M == 0)	{
 			m.i_frame = i / M;
-			_insert_one_item(audio_file[i], m);
+			_InsertOneItem(audio_file[i], m);
 		}
 	}
 #else
@@ -107,169 +101,41 @@ int Searcher::_build_one_file_index(const string filepath) {
 	return i;
 }
 
-/*
-void Searcher::_test_index()
-{
-for(int i = 1; i < 3; i++)
-{
-forward_list<MusicInfo> list = array_index[i];
-for(forward_list<MusicInfo>::iterator iter = list.begin(); iter != list.end(); iter++)
-{
-cout<<iter->id<<"\t"<<iter->i_frame<<endl;
-}
-cout<<endl;
-}
-}
-*/
-
-int Searcher::_inner_search(unsigned int queryID, unsigned long key,
-	FingerItem* finger_block, const int block_size, const int i, int& tmp_dif) {
+int Searcher::_InnerSearch(unsigned long key, FingerItem* finger_block,
+	const int block_size, const int i, map<int, int>* result_map) {
 	bool is_find = false;
 	//* vector index
 	time_t search_start, search_end;
 	search_start = clock();
-	long long result = _binary_search(key);
+	long long result = _BinarySearch(key);
 	if (result == -1)
 		return -1;
 	long long start = result;
 	long long end = result;
 	do {
 		start--;
-	} while (start >= 0 && index[start].first == key);
+	} while (start >= 0 && _index[start].first == key);
 	start++;
 	do {
 		end++;
-	} while (end < (signed)index.size() && index[end].first == key);
+	} while (end < (signed)_index.size() && _index[end].first == key);
 	end--;
 	search_end = clock();
 	duration_search += (double)(search_end - search_start) / CLOCKS_PER_SEC;
 	for (long long iter = start; iter <= end; iter++) {
-		int diffbits = compare_bitsets(index[iter].second.id, finger_block, block_size, i, index[iter].second.i_frame);
-		if (diffbits <= THREHOLD_BITS) {
-			diff += diffbits;
-			match++;
-			//cout<<"result frame: "<< index[iter].second.i_frame<<"---";
+		double diffbits = _CompareBitsets(_index[iter].second.id,
+			finger_block, block_size, i, _index[iter].second.i_frame);
+		if (diffbits <= BIT_ERROR_RATE) {
 			is_find = true;
-			tmp_dif = diffbits;
-			tmp_result[queryID][tmp_dif] = index[iter].second.id;
-			//return index[iter].second.id;
+			return _index[iter].second.id;
+			(*result_map)[diffbits] = _index[iter].second.id;
 		}
 	}
-	/// vector index end
 	return -1;
 }
 
-/*
-int Searcher::search(FingerItem* finger_block, const int block_size, int& temp_dif)
-{
-int result = -1;
-//exact match
-for(int i = 0; i < block_size; i++)//从查询指纹块的第一条指纹开始
-{
-unsigned long key = finger_block[i].finger.to_ulong();
-if(key == 0)
-continue;
-result = _inner_search(key, finger_block, block_size, i, temp_dif);
-if(result != -1)
-{
-hit_index[i]++; //表示从第i条指纹中找到
-return result;
-}
-}
-
-//near match
-#ifdef OPEN_NEAR_SEARCH
-for(int i = 0; i < block_size; i++)
-{
-FingerItem item = finger_block[i];
-for(int try_count = 0; try_count < (int)pow(2, TOGGLENUM); try_count++)
-{
-bitset<TOGGLENUM> tempbit(try_count);
-for(int bit_index = 0; bit_index < TOGGLENUM; bit_index++)
-{
-if(tempbit.test(bit_index))
-item.finger.set(item.toggle_bits[bit_index]);
-else
-item.finger.reset(item.toggle_bits[bit_index]);
-}
-unsigned long key = item.finger.to_ulong();
-if(key == 0)
-continue;
-result = _inner_search(key, finger_block, block_size, i, temp_dif);
-if(result != -1)
-return result;
-}
-}
-#endif
-
-#ifdef ONE_BIT_SEARCH
-for(int i = 0; i < block_size; i++)
-{
-for(int j = 0; j < 32; j++)
-{
-FingerItem item = finger_block[i];
-item.finger.flip(j);
-unsigned long key = item.finger.to_ulong();
-if(key == 0)
-continue;
-result = _inner_search(key, finger_block, block_size, i, temp_dif);
-if(result != -1)
-return result;
-}
-}
-#endif
-
-#ifdef TWO_BIT_SEARCH
-for(int i = 0; i < block_size; i++)
-{
-for(int j = 0; j < 31; j++)
-{
-for(int k = j + 1; k < 32; k++)
-{
-FingerItem item = finger_block[i];
-item.finger.flip(j);
-item.finger.flip(k);
-unsigned long key = item.finger.to_ulong();
-if(key == 0)
-continue;
-result = _inner_search(key, finger_block, block_size, i, temp_dif);
-if(result != -1)
-return result;
-}
-}
-}
-#endif
-
-#ifdef THREE_BIT_SEARCH
-for(int i = 0; i < block_size; i++)
-{
-for(int j = 0; j < 30; j++)
-{
-for(int k = j + 1; k < 31; k++)
-{
-for(int m = k + 1; m < 32; m++)
-{
-FingerItem item = finger_block[i];
-item.finger.flip(j);
-item.finger.flip(k);
-item.finger.flip(m);
-unsigned long key = item.finger.to_ulong();
-if(key == 0)
-continue;
-result = _inner_search(key, finger_block, block_size, i, temp_dif);
-if(result != -1)
-return result;
-}
-}
-}
-}
-#endif
-return -1;
-}
-*/
-
-int Searcher::SubSamplingSearch(unsigned int queryID, FingerItem* finger_block, const int block_size, int& tmp_dif)
-{
+int Searcher::Search(FingerItem* finger_block, const int block_size, int& tmp_dif) {
+	map<int, int> result_map;
 	FingerItem sub_finger_block[M][SUB_BLOCK_SIZE];
 	for (int i = 0; i < block_size; i++) {
 		sub_finger_block[i % M][i / M] = finger_block[i];
@@ -277,14 +143,12 @@ int Searcher::SubSamplingSearch(unsigned int queryID, FingerItem* finger_block, 
 	int result = -1;
 	for (int i = 0; i < SUB_BLOCK_SIZE; i++) {
 		for (int k = 0; k < M; k++)	{
-			unsigned long key = sub_finger_block[k][i].finger.to_ulong();
+			unsigned long key = sub_finger_block[k][i].to_ulong();
 			if (key == 0)
 				continue;
-			result = _inner_search(queryID, key, sub_finger_block[k], SUB_BLOCK_SIZE, i, tmp_dif);
-			if (result != -1) {
-				tmp_result[queryID][tmp_dif] = result;
-				//return result;
-			}
+			result = _InnerSearch(key, sub_finger_block[k], SUB_BLOCK_SIZE, i, &result_map);
+			if (result > 0)
+				return result;
 		}
 	}
 #ifdef ONE_BIT_SEARCH
@@ -292,15 +156,13 @@ int Searcher::SubSamplingSearch(unsigned int queryID, FingerItem* finger_block, 
 		for (int k = 0; k < M; k++)	{
 			for (int j = 0; j < 32; j++) {
 				FingerItem item = sub_finger_block[k][i];
-				item.finger.flip(j);
-				unsigned long key = item.finger.to_ulong();
+				item.flip(j);
+				unsigned long key = item.to_ulong();
 				if (key == 0)
 					continue;
-				result = _inner_search(queryID, key, sub_finger_block[k], SUB_BLOCK_SIZE, i, tmp_dif);
-				if (result != -1) {
-					tmp_result[queryID][tmp_dif] = result;
-					//return result;
-				}
+				result = _InnerSearch(key, sub_finger_block[k], SUB_BLOCK_SIZE, i, &result_map);
+				if (result > 0)
+					return result;
 			}
 		}
 	}
@@ -313,16 +175,14 @@ int Searcher::SubSamplingSearch(unsigned int queryID, FingerItem* finger_block, 
 			for (int j = 0; j < 31; j++) {
 				for (int m = j + 1; m < 32; m++) {
 					FingerItem item = sub_finger_block[k][i];
-					item.finger.flip(j);
-					item.finger.flip(m);
-					unsigned long key = item.finger.to_ulong();
+					item.flip(j);
+					item.flip(m);
+					unsigned long key = item.to_ulong();
 					if (key == 0)
 						continue;
-					result = _inner_search(queryID, key, sub_finger_block[k], SUB_BLOCK_SIZE, i, tmp_dif);
-					if (result != -1) {
-						tmp_result[queryID][tmp_dif] = result;
-						//return result;
-					}
+					result = _InnerSearch(key, sub_finger_block[k], SUB_BLOCK_SIZE, i, &result_map);
+					if (result > 0)
+						return result;
 				}
 			}
 		}
@@ -342,20 +202,17 @@ int Searcher::SubSamplingSearch(unsigned int queryID, FingerItem* finger_block, 
 						unsigned long key = item.finger.to_ulong();
 						if (key == 0)
 							continue;
-						result = _inner_search(key, sub_finger_block[k], SUB_BLOCK_SIZE, i, tmp_dif);
-						if (result != -1)
-							return result;
+						result = _inner_search(key, sub_finger_block[k], SUB_BLOCK_SIZE, i, &result_map);
 					}
 				}
 			}
 		}
 	}
 #endif
-
-	cout << "SIZE: " << tmp_result[queryID].size() << endl;
-	if (tmp_result[queryID].size() != 0) {
-		tmp_dif = tmp_result[queryID].begin()->first;
-		return tmp_result[queryID].begin()->second;
+	hit_number += result_map.size();
+	if (result_map.size() > 0) {
+		tmp_dif = result_map.begin()->first;
+		return result_map.begin()->second;
 	}
 	else
 		return -1;
@@ -365,12 +222,12 @@ int Searcher::SubSamplingSearch(unsigned int queryID, FingerItem* finger_block, 
 *i_frame_in_block: 在query指纹块中命中的index
 *i_frame_in_file: 在file中命中的index
 */
-int Searcher::compare_bitsets(int id, FingerItem* finger_block, const int block_size, \
+double Searcher::_CompareBitsets(int id, FingerItem* finger_block, const int block_size, \
 	const int i_frame_in_block, int i_frame_in_file) {
 	if (i_frame_in_file - i_frame_in_block < 0)
 		return INT_MAX;//表示错误，返回1.0
 	int diff_bits = 0;
-	vector<bitset<32>>& full_audio_fingers = finger_database[id];
+	vector<bitset<32>>& full_audio_fingers = _finger_database[id];
 
 	if (i_frame_in_file + block_size - i_frame_in_block > full_audio_fingers.size())
 		return INT_MAX;
@@ -379,23 +236,18 @@ int Searcher::compare_bitsets(int id, FingerItem* finger_block, const int block_
 	//time_compare_start = clock();
 
 	for (int i = 0; i < block_size; i++) {
-		bitset<32> subfinger_xor = finger_block[i].finger ^ full_audio_fingers[i_frame_in_file];
+		bitset<32> subfinger_xor = finger_block[i] ^ full_audio_fingers[i_frame_in_file];
 		i_frame_in_file++;
 		diff_bits += (int)subfinger_xor.count();
 	}
 
 	//time_compare_finish = clock();
 	//duration_compare += (double)(time_compare_finish - time_compare_start)/CLOCKS_PER_SEC;
-	return diff_bits;
-}
-
-
-double Searcher::get_mean_diff() {
-	return diff / match;
+	return (double)diff_bits / (32 * SUB_BLOCK_SIZE);
 }
 
 int Searcher::LoadIndex(string filepath) {
-	index.clear();
+	_index.clear();
 	unsigned int index_size = 0;
 	ifstream fin(filepath, ios::in | ifstream::binary);
 	fin.read(reinterpret_cast<char *>(&index_size), sizeof(int));
@@ -403,17 +255,30 @@ int Searcher::LoadIndex(string filepath) {
 		fin.close();
 		return -1;
 	}
-	index.resize(index_size);
-	fin.read(reinterpret_cast<char *>(&index[0]), index.size() * sizeof(index[0]));
+	_index.resize(index_size);
+	fin.read(reinterpret_cast<char *>(&_index[0]), _index.size() * sizeof(_index[0]));
 	fin.close();
 	return 0;
 }
 
-int Searcher::_loadFingerFromOneFile(string filepath_prefix, unsigned int fileNum) {
+int Searcher::LoadFingerDatabase(string filepath_prefix) {
+	_finger_database.clear();
+	vector<thread> threads(OUTPUT_THREAD);
+	for (int i = 0; i < OUTPUT_THREAD; i++)	{
+		threads[i] = thread(&Searcher::_LoadFingerFromOneFile, this, filepath_prefix, i);
+	}
+
+	for (int i = 0; i < OUTPUT_THREAD; i++) {
+		threads[i].join();
+	}
+	return 0;
+}
+
+int Searcher::_LoadFingerFromOneFile(string filepath_prefix, unsigned int fileNum) {
 	ifstream fin(filepath_prefix + to_string(fileNum), ios::in | ifstream::binary);
 	int databaseSize = 0;
 	fin.read(reinterpret_cast<char *>(&databaseSize), sizeof(databaseSize));
-	finger_database.resize(databaseSize);
+	_finger_database.resize(databaseSize);
 	unsigned int songID = 0;
 	unsigned int fingerSize = 0;
 	vector<unsigned int> iv;
@@ -425,27 +290,14 @@ int Searcher::_loadFingerFromOneFile(string filepath_prefix, unsigned int fileNu
 		if (fingerSize != 0) {
 			iv.resize(fingerSize);
 			fin.read(reinterpret_cast<char *>(&iv[0]), fingerSize * sizeof(iv[0]));
-			finger_database[songID] = Util::VectorIntToVectorBitset(iv);
+			_finger_database[songID] = Util::VectorIntToVectorBitset(iv);
 		}
 	}
 	fin.close();
 	return 0;
 }
 
-int Searcher::LoadFingerDatabase(string filepath_prefix) {
-	finger_database.clear();
-	vector<thread> threads(OUTPUT_THREAD);
-	for (int i = 0; i < OUTPUT_THREAD; i++)	{
-		threads[i] = thread(&Searcher::_loadFingerFromOneFile, this, filepath_prefix, i);
-	}
-
-	for (int i = 0; i < OUTPUT_THREAD; i++) {
-		threads[i].join();
-	}
-	return 0;
-}
-
-int Searcher::_outputFingerToOneFile(string filepath_prefix,
+int Searcher::_OutputFingerToOneFile(string filepath_prefix,
 	unsigned int databaseSize, unsigned int fileNum) {
 	ofstream fout(filepath_prefix + to_string(fileNum), ios::out | ofstream::binary);
 	fout.write(reinterpret_cast<char *>(&databaseSize), sizeof(unsigned int));
@@ -453,7 +305,7 @@ int Searcher::_outputFingerToOneFile(string filepath_prefix,
 	vector<unsigned int> intVector;
 	for (unsigned int i = 0; i < databaseSize; i++)	{
 		if (i % OUTPUT_THREAD == fileNum) {
-			intVector = Util::VectorBitsetToVectorInt(finger_database[i]);
+			intVector = Util::VectorBitsetToVectorInt(_finger_database[i]);
 			fingerSize = (unsigned int)intVector.size();
 			fout.write(reinterpret_cast<char *>(&i), sizeof(i));
 			fout.write(reinterpret_cast<char *>(&fingerSize), sizeof(fingerSize));
@@ -466,11 +318,11 @@ int Searcher::_outputFingerToOneFile(string filepath_prefix,
 }
 
 int Searcher::OutputFingerToFile(string filepath_prefix) {
-	unsigned int databaseSize = (unsigned int)finger_database.size();
+	unsigned int databaseSize = (unsigned int)_finger_database.size();
 	vector<thread> threads(OUTPUT_THREAD);
 
 	for (int i = 0; i < OUTPUT_THREAD; i++) {
-		threads[i] = thread(&Searcher::_outputFingerToOneFile, this, filepath_prefix, databaseSize, i);
+		threads[i] = thread(&Searcher::_OutputFingerToOneFile, this, filepath_prefix, databaseSize, i);
 	}
 
 	for (int i = 0; i < OUTPUT_THREAD; i++)	{
@@ -479,16 +331,56 @@ int Searcher::OutputFingerToFile(string filepath_prefix) {
 	return 0;
 }
 
-
 int Searcher::OutputIndexToFile(string filepath) {
 	ofstream fout(filepath, ios::out | ofstream::binary);
-	size_t index_size = index.size();
+	size_t index_size = _index.size();
 	fout.write(reinterpret_cast<char *>(&index_size), sizeof(int));
 	if (index_size == 0) {
 		fout.close();
 		return -1;
 	}
-	fout.write(reinterpret_cast<char *>(&index[0]), index.size() * sizeof(index[0]));
+	fout.write(reinterpret_cast<char *>(&_index[0]), _index.size() * sizeof(_index[0]));
 	fout.close();
 	return 0;
+}
+
+int Searcher::Clear() {
+	_index.clear();
+	_finger_database.clear();
+	return 0;
+}
+
+void Searcher::DoStatistics() {
+	int number = 1;
+	int distinct_key = 1;
+	vector<int> distribution(21, 0);
+	for (int i = 1; i < _index.size(); i++) {
+		if (_index[i].first != _index[i - 1].first) {
+			if (number < 20)
+				distribution[number]++;
+			else
+				distribution[20]++;
+			distinct_key++;
+			number = 1;
+		}
+		else {
+			number++;
+		}
+	}
+	cout << "Total keys: " << _index.size() << endl;
+	cout << "Distinct keys: " << distinct_key << endl;
+	for (int i = 1; i < distribution.size(); i++)
+		cout << "Key numbers for value list length " << i << ": "
+		<< (double)distribution[i] / distinct_key * 100 << "%" << endl;
+	cout << "Average length: " << (double)_index.size() / distinct_key << endl;
+
+	vector<int> bits(32, 0);
+	for (int i = 0; i < _index.size(); i++) {
+		for (int j = 0; j < 32; j++) {
+			if ((_index[i].first >> j) & 1)
+				bits[j]++;
+		}
+	}
+	for (int i = 0; i < 32; i++)
+		cout << "1 in bit " << i << ": " << (double)bits[i] / _index.size() * 100 << "%" << endl;
 }

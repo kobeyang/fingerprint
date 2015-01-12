@@ -1,4 +1,6 @@
 #include <iostream>
+#include <iomanip>
+#include <fstream>
 #include <cstdio>
 #include <thread>
 #include <vector>
@@ -23,39 +25,21 @@ const double freq_bind[] =
 1262.68, 1337.40, 1416.54, 1500.36, 1589.14,
 1683.17, 1782.77, 1888.27, 2000.00 }; //划分的频带 [0, 33]
 
-FingerExtractor::~FingerExtractor()
-{}
+FingerExtractor::~FingerExtractor() {}
 
 void FingerExtractor::CalcFingerprint(const string waveFilePath) {
-	this->wavepath = waveFilePath;
-	wp.Clear();
-	wp.OpenWaveFile(waveFilePath.c_str());
-	wp.MakeTargetSamplesData();
+	this->_wavepath = waveFilePath;
+	_wp.Clear();
+	_wp.OpenWaveFile(waveFilePath.c_str());
+	_wp.MakeTargetSamplesData();
 	unsigned long all_time_data_size = 0;
-	wp.GetSamplesVector(all_time_data, all_time_data_size);
-	wp.CloseWaveFile();
+	_wp.GetSamplesVector(_all_time_data, all_time_data_size);
+	_wp.CloseWaveFile();
 	_Energying(all_time_data_size);
 	_Fingerprinting();
 }
 
-void FingerExtractor::_calc_freq_bind() {
-	double a1 = 300;
-	double a33 = 2000;
-	double q = pow((double)2000 / 300, 1.0 / 33);
-	double temp = a1;
-	//freq_bind.push_back(temp);
-	for (int i = 1; i <= 33; i++) {
-		temp *= q;
-		//freq_bind.push_back(temp);
-	}
-
-	/*
-	for(int i = 0; i < 34; i++)
-	cout<<"i:"<<i<<" :"<<freq_bind[i]<<endl;
-	*/
-}
-
-int FingerExtractor::_select_bind(double point_freq) {
+int FingerExtractor::_SelectBind(double point_freq) {
 	int start = 0;
 	int end = 33;
 	int mid = 0;
@@ -70,85 +54,20 @@ int FingerExtractor::_select_bind(double point_freq) {
 	}
 	return -1;
 }
-/*
-int FingerExtractor::_multi_thread_FFT(int thread_num, int frame_size, int frame_index[THREAD_NUM])
-{
-int real_frame_index = 0;
-for(int frameNum = 0; frameNum < frame_size; frameNum++)
-{
-cpxv_t freq_data[2048];
-double bind_energy[33];
-memset(bind_energy, 0, sizeof(double) * 33);
-DoFFT(time_data_per_frame[thread_num][frameNum], freq_data);
-double point_freq = 0;
-for(int j = 0; j < NumBinsInFftWinM; j++)
-{
-//FFT结果第n个点代表的频率值
-point_freq = (j + 1) * sampleRate / NumBinsInFftWinM;
-if(point_freq < 300 || point_freq > 2000)
-continue;
-else
-{
-int bind = _select_bind(point_freq); // [0,32]
-bind_energy[bind] += sqrt((freq_data[j].re * freq_data[j].re + freq_data[j].im * freq_data[j].im));
-}
-}
-real_frame_index = frame_index[frameNum];
-for(int i = 0; i < 33; i++)
-energy[real_frame_index][i] = bind_energy[i];
-}
-return 0;
-}
-*/
+
 int FingerExtractor::_Energying(long all_time_data_size) {
 	//clock_t FFT_start, FFT_end;
-
-	memset(energy, 0, sizeof(double)* QUERY_FINGER_NUM * 33);
-	frameNum = 0;
+	memset(_energy, 0, sizeof(double)* QUERY_FINGER_NUM * 33);
+	_frame_num = 0;
 	int start = 0;
-	int jump_samples = (int)(sampleRate * timeInterval);
-
-	/*
-	#ifdef MULTITHREAD_FFT
-	memset(time_data_per_frame, 0, sizeof(short) * SUB_FINGER_NUM * NumSamplesPerFrameM);
-	int temp_thread_num = 0;
-	int temp_frame_num = 0;
-	int frame_size[FFT_THREAD];
-	int frame_index[FFT_THREAD][SUB_FINGER_NUM];
-	memset(frame_size, 0, sizeof(int) * FFT_THREAD);
-	while(start + NumSamplesPerFrameM < all_time_data_size)
-	{
-	temp_thread_num = frameNum % FFT_THREAD;
-	temp_frame_num = frame_size[temp_thread_num];
-	frame_index[temp_thread_num][temp_frame_num] = frameNum;
-	for(int i = 0; i < NumSamplesPerFrameM; i++)
-	{
-	time_data_per_frame[temp_thread_num][temp_frame_num][i] = all_time_data[i + start];
-	}
-	frame_size[temp_thread_num]++;
-	frameNum++;
-	start += jump_samples;
-	}
-	// load data finished
-	vector<thread> threads;
-	for(int i = 0; i < FFT_THREAD; i++)
-	{
-	threads.push_back(thread(&FingerExtractor::_multi_thread_FFT, this, i, frame_size[i], frame_index[i]));
-	}
-	for(int i = 0; i < FFT_THREAD; i++)
-	{
-	threads[i].join();
-	}
-
-	#else
-	*/
+	int jump_samples = (int)(sampleRate * TIME_INTERVAL);
 	while (start + NumSamplesPerFrameM < all_time_data_size) {
 		short time_data[1850];
 		cpxv_t freq_data[2048];
 		double bind_energy[33];
 		memset(bind_energy, 0, sizeof(double)* 33);
 		for (int i = 0; i < NumSamplesPerFrameM; i++) {
-			time_data[i] = all_time_data[i + start];
+			time_data[i] = _all_time_data[i + start];
 		}
 
 		//FFT_start = clock();
@@ -156,101 +75,95 @@ int FingerExtractor::_Energying(long all_time_data_size) {
 		//FFT_end = clock();
 		//duration_FFT += (double)(FFT_end - FFT_start) / CLOCKS_PER_SEC;
 		double point_freq = 0;
-		for (int j = 0; j < NumBinsInFftWinM; j++) {
+		_log_power.push_back(vector<double>(NumBinsInFftWinM));
+		for (int i = 0; i < NumBinsInFftWinM; i++) {
+			double power = (freq_data[i].re * freq_data[i].re + freq_data[i].im * freq_data[i].im);
+			_log_power[_frame_num][i] = max(0.0, log(power));
+
 			//FFT结果第n个点代表的频率值
-			point_freq = (j + 1) * sampleRate / NumBinsInFftWinM;
+			point_freq = (i + 1) * sampleRate / NumBinsInFftWinM;
 			if (point_freq < 300 || point_freq > 2000) {
 				continue;
 			} else {
-				int bind = _select_bind(point_freq); // [0,32]
-				bind_energy[bind] += sqrt((freq_data[j].re * freq_data[j].re + freq_data[j].im * freq_data[j].im));
+				int bind = _SelectBind(point_freq); // [0,32]
+				bind_energy[bind] += sqrt(power);
 			}
 		}
 		for (int i = 0; i < 33; i++)
-			energy[frameNum][i] = bind_energy[i];
+			_energy[_frame_num][i] = bind_energy[i];
 
 		//下一帧
-		frameNum++;
+		_frame_num++;
 		start += jump_samples;
 	}
 
 	//#endif
-	return frameNum;
+	return _frame_num;
 }
-
-/*
-vector<short> FingerExtractor::_get_top_N(vector<double>& energy)
-{
-struct _top_energy
-{
-double data;
-short index;
-};
-vector<_top_energy> top_energy;
-for(int i = 0; i < (signed)energy.size(); i++)
-{
-struct  _top_energy t;
-t.data = energy[i];
-t.index = i;
-top_energy.push_back(t);
-}
-sort(top_energy.begin(), top_energy.end(), [](struct _top_energy t1, struct _top_energy t2){return abs(t1.data) < abs(t2.data);});
-
-vector<short> top;
-for(int i = 0; i < TOGGLENUM; i++)
-top.push_back(top_energy[i].index);
-return top;
-}
-*/
 
 void FingerExtractor::_Fingerprinting() {
-	memset(fingers_energy, 0, sizeof(double)* 204 * 32);
 	//第0帧
 	for (int j = 0; j < 32; j++) {
-		fingers_energy[0][j] = energy[0][j] - energy[0][j + 1];
-		if (fingers_energy[0][j] > 0)
-			fingers[0][j] = '1';
+		if (_energy[0][j] - _energy[0][j + 1] > 0)
+			_fingers[0][j] = '1';
 		else
-			fingers[0][j] = '0';
+			_fingers[0][j] = '0';
 	}
 
-	for (int i = 1; i < frameNum; i++) {
+	for (int i = 1; i < _frame_num; i++) {
 		for (int j = 0; j < 32; j++) {
-			fingers_energy[i][j] = energy[i][j] - energy[i][j + 1] - (energy[i - 1][j] - energy[i - 1][j + 1]);
-			if (fingers_energy[i][j] > 0)
-				fingers[i][j] = '1';
+			if (_energy[i][j] - _energy[i][j + 1] - (_energy[i - 1][j] - _energy[i - 1][j + 1]) > 0)
+				_fingers[i][j] = '1';
 			else
-				fingers[i][j] = '0';
+				_fingers[i][j] = '0';
 		}
 	}
 }
 
-void FingerExtractor::getQueryFinger(FingerItem* new_finger, int& size) {
-	size = frameNum;
-	for (int i = 0; i < frameNum; i++) {
-		FingerItem item;
-		bitset<32> b(fingers[i]);
-#ifdef OPEN_NEAR_SEARCH
-		item.toggle_bits = _get_top_N(fingers_energy[i]);
-#endif
-		item.finger = b;
-		new_finger[i] = item;
+void FingerExtractor::OutputTrainingSamples(const string& x_path,
+	const string& y_path) {
+	fstream fout_x, fout_y;
+	fout_x.open(x_path, fstream::app);
+	fout_y.open(y_path, fstream::app);
+	int batch_size = 100;
+	int jump = 10;
+	int output_samples = _frame_num / (batch_size * jump) * batch_size * jump;
+	for (int i = 0; i < output_samples; i += jump) {
+		for (int j = 0; j < NumBinsInFftWinM; j++) {
+			fout_x << setprecision(2) << std::fixed << _log_power[i][j] << "\t";
+		}
+		fout_x << endl;
+	}
+	for (int i = 0; i < output_samples; i += jump) {
+		for (int j = 0; j < 32; j++) {
+			fout_y << _fingers[i][j] << "\t";
+		}
+		fout_y << endl;
+	}
+	fout_x.close();
+	fout_y.close();
+}
+
+void FingerExtractor::GetQueryFinger(FingerItem* new_finger, int& size) {
+	size = _frame_num;
+	for (int i = 0; i < _frame_num; i++) {
+		new_finger[i] = bitset<32>(_fingers[i]);
 	}
 	return;
 }
 
-int FingerExtractor::getFingerFileId() {
-	string originFile = wavepath.substr(wavepath.find_last_of("\\") + 1, wavepath.size());
+int FingerExtractor::GetFingerFileId() {
+	string originFile = _wavepath.substr(_wavepath.find_last_of("\\") + 1, _wavepath.size());
 	return stoi(originFile.substr(0, originFile.find(".")));
 }
 
 int FingerExtractor::PrintFingerToFile(const string fingerFile) {
 	FILE *fp = fopen(fingerFile.c_str(), "w");
 	string sub_finger;
-	for (int i = 0; i < frameNum; i++) {
+	for (int i = 0; i < _frame_num; i++) {
 		sub_finger = "";
 		for (int j = 0; j < 32; j++)
-			sub_finger.push_back(fingers[i][j]);
+			sub_finger.push_back(_fingers[i][j]);
 		bitset<32> b(sub_finger);
 		fprintf(fp, "%lu\n", b.to_ulong());
 	}
